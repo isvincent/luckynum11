@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>班級大富翁幸運抽籤盤</title>
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+      --board-bg: #fffdf9;
+      --cell-bg: #ffffff;
+      --cell-border: #f1c40f;
+      --active-glow: #ff4757;
+      --primary: #ff4757;
+      --secondary: #2ed573;
+      --accent: #1e90ff;
+      --font-main: "PingFang TC", "Microsoft JhengHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      font-family: var(--font-main);
+      background: var(--bg-gradient);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px;
+      color: #2f3542;
+      overflow-x: hidden;
+    }
+
+    /* 頂部導覽區 */
+    header {
+      width: 100%;
+      max-width: 1200px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      background: rgba(255, 255, 255, 0.85);
+      padding: 10px 24px;
+      border-radius: 20px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+      backdrop-filter: blur(8px);
+    }
+
+    .class-title-badge {
+      font-size: 28px;
+      font-weight: 900;
+      color: #ff4757;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header-controls {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn {
+      padding: 10px 18px;
+      font-size: 16px;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 14px rgba(0,0,0,0.15);
+    }
+    .btn:active { transform: translateY(1px); }
+
+    .btn-settings { background: #5352ed; color: #fff; }
+    .btn-export { background: #2ed573; color: #fff; }
+    .btn-audio { background: #ffa502; color: #fff; }
+
+    /* 大富翁棋盤網格 (11x11 結構) */
+    .monopoly-board {
+      width: 100%;
+      max-width: 1100px;
+      aspect-ratio: 1 / 1;
+      max-height: 82vh;
+      background: var(--board-bg);
+      border-radius: 24px;
+      border: 8px solid #ffa502;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+      display: grid;
+      grid-template-columns: repeat(11, 1fr);
+      grid-template-rows: repeat(11, 1fr);
+      gap: 4px;
+      padding: 6px;
+      position: relative;
+    }
+
+    /* 單一格子 */
+    .cell {
+      background: var(--cell-bg);
+      border: 2px solid #eccc68;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 2px;
+      text-align: center;
+      position: relative;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      overflow: hidden;
+    }
+
+    /* 當前選中／閃爍亮框效果 */
+    .cell.active {
+      transform: scale(1.12);
+      z-index: 10;
+      border-color: #ff4757;
+      background: #ffeaa7;
+      box-shadow: 0 0 20px #ff4757, inset 0 0 10px #ff6b81;
+      animation: pulse 0.3s infinite alternate;
+    }
+
+    @keyframes pulse {
+      from { transform: scale(1.08); }
+      to { transform: scale(1.15); }
+    }
+
+    /* 格子內容排版與大字體 */
+    .cell-id {
+      font-size: 13px;
+      font-weight: 800;
+      background: #70a1ff;
+      color: #fff;
+      padding: 1px 6px;
+      border-radius: 8px;
+      line-height: 1.2;
+    }
+
+    .cell-name {
+      font-size: 16px;
+      font-weight: 900;
+      color: #2f3542;
+      line-height: 1.2;
+      word-break: break-all;
+    }
+
+    .cell-score {
+      font-size: 13px;
+      font-weight: 800;
+      color: #e84118;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    /* 角落特殊格與機會命運格顏色 */
+    .cell.corner {
+      background: linear-gradient(135deg, #ff9ff3, #feca57);
+      border-color: #ff6b6b;
+    }
+    .cell.corner .cell-name {
+      font-size: 15px;
+      color: #222f3e;
+    }
+    .cell.special-chance {
+      background: #e0f7fa;
+      border-color: #00bcd4;
+    }
+    .cell.special-destiny {
+      background: #fff3e0;
+      border-color: #ff9800;
+    }
+
+    /* 棋盤中央控制核心 (佔 9x9 範圍) */
+    .board-center {
+      grid-column: 2 / 11;
+      grid-row: 2 / 11;
+      background: radial-gradient(circle, #ffffff 40%, #f1f2f6 100%);
+      border-radius: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      position: relative;
+      box-shadow: inset 0 0 25px rgba(0,0,0,0.05);
+    }
+
+    /* 骰子動畫 */
+    .dice-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .dice {
+      width: 90px;
+      height: 90px;
+      background: white;
+      border-radius: 18px;
+      border: 4px solid #2f3542;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 48px;
+      font-weight: 900;
+      color: #ff4757;
+      transition: transform 0.1s linear;
+    }
+
+    .dice.rolling {
+      animation: rollAnimation 0.15s infinite;
+    }
+
+    @keyframes rollAnimation {
+      0% { transform: rotate(0deg) scale(1.1); }
+      50% { transform: rotate(180deg) scale(0.9); }
+      100% { transform: rotate(360deg) scale(1.1); }
+    }
+
+    .btn-roll {
+      padding: 16px 45px;
+      font-size: 26px;
+      font-weight: 900;
+      color: #fff;
+      background: linear-gradient(45deg, #ff4757, #ff6b81);
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 10px 25px rgba(255, 71, 87, 0.4);
+      transition: all 0.2s ease;
+    }
+    .btn-roll:hover:not(:disabled) {
+      transform: scale(1.05);
+      box-shadow: 0 14px 30px rgba(255, 71, 87, 0.5);
+    }
+    .btn-roll:disabled {
+      background: #a4b0be;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    /* 抽中卡片彈出視窗／中央焦點展示 */
+    .result-banner {
+      min-height: 80px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 22px;
+      font-weight: 800;
+      color: #3742fa;
+    }
+
+    /* 獲獎/特殊事件 Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.6);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-content {
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 28px;
+      width: 90%;
+      max-width: 480px;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+      animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes popIn {
+      from { transform: scale(0.7); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .student-showcase-name {
+      font-size: 42px;
+      font-weight: 900;
+      color: #2f3542;
+      margin: 10px 0;
+    }
+
+    .student-showcase-score {
+      font-size: 24px;
+      font-weight: bold;
+      color: #ff4757;
+      margin-bottom: 20px;
+    }
+
+    .score-controls {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .btn-score {
+      padding: 12px 24px;
+      font-size: 22px;
+      font-weight: bold;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .btn-score.plus { background: #2ed573; color: white; }
+    .btn-score.minus { background: #ff4757; color: white; }
+
+    /* 設定彈跳視窗 */
+    .settings-modal textarea {
+      width: 100%;
+      height: 180px;
+      padding: 10px;
+      font-size: 15px;
+      border-radius: 12px;
+      border: 2px solid #ced6e0;
+      font-family: monospace;
+      margin-top: 10px;
+      resize: vertical;
+    }
+
+    .setting-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 15px 0;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .setting-item input[type="text"] {
+      padding: 8px 12px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid #a4b0be;
+    }
+
+    /* 響應式優化 */
+    @media (max-width: 768px) {
+      .cell-name { font-size: 12px; }
+      .cell-id { font-size: 10px; padding: 1px 3px; }
+      .cell-score { font-size: 10px; }
+      .dice { width: 65px; height: 65px; font-size: 34px; }
+      .btn-roll { font-size: 20px; padding: 12px 30px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 頂部資訊與控制欄 -->
+  <header>
+    <div class="class-title-badge">
+      <span>🎲</span>
+      <span id="displayClassName">102班</span>
+      <span style="font-size: 16px; color: #747d8c; font-weight: normal;">大富翁抽籤盤</span>
+    </div>
+    <div class="header-controls">
+      <button class="btn btn-audio" id="btnMuteToggle" onclick="toggleAudio()">🔊 音效：開</button>
+      <button class="btn btn-export" onclick="exportScores()">📥 下載成績單</button>
+      <button class="btn btn-settings" onclick="openSettings()">⚙️ 設定名單</button>
+    </div>
+  </header>
+
+  <!-- 大富翁 11x11 棋盤 -->
+  <main class="monopoly-board" id="board">
+    <!-- 中央互動操作台 -->
+    <div class="board-center">
+      <div class="dice-area">
+        <div class="dice" id="diceElement">🎲</div>
+        <button class="btn-roll" id="btnRoll" onclick="startRoll()">擲骰抽籤！</button>
+      </div>
+      <div class="result-banner" id="statusBanner">點擊按鈕擲骰子，開啟幸運走格！</div>
+    </div>
+  </main>
+
+  <!-- 學生卡片 / 事件互動 Modal -->
+  <div class="modal-overlay" id="resultModal">
+    <div class="modal-content">
+      <div id="modalEventIcon" style="font-size: 56px;">🎉</div>
+      <h3 id="modalSubtitle" style="color: #747d8c; margin-top: 5px;">恭喜抽中！</h3>
+      <div class="student-showcase-name" id="modalStudentName">王○晴</div>
+      <div class="student-showcase-score" id="modalStudentScore">目前得分：❤️ 0</div>
+      
+      <div class="score-controls" id="modalScoreBtns">
+        <button class="btn-score plus" onclick="modifyActiveScore(1)">+1 ❤️</button>
+        <button class="btn-score minus" onclick="modifyActiveScore(-1)">-1 ❤️</button>
+      </div>
+
+      <div id="modalSpecialDescription" style="display:none; font-size: 18px; margin-bottom: 20px; color: #2f3542; font-weight: bold; background: #fff2f2; padding: 12px; border-radius: 12px;"></div>
+
+      <button class="btn btn-settings" style="width: 100%; justify-content: center; font-size: 18px;" onclick="closeModal()">確認並關閉</button>
+    </div>
+  </div>
+
+  <!-- 設定視窗 Modal -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal-content settings-modal" style="text-align: left; max-width: 550px;">
+      <h2 style="color: #2f3542; margin-bottom: 15px;">⚙️ 班級與名單設定</h2>
+      
+      <div class="setting-item">
+        <label>班級名稱：</label>
+        <input type="text" id="inputClassName" value="102班" />
+      </div>
+
+      <div class="setting-item">
+        <label>姓名隱私遮罩（○）：</label>
+        <input type="checkbox" id="checkMask" checked style="width: 22px; height: 22px;" />
+      </div>
+
+      <label style="font-weight: bold; display: block; margin-top: 10px;">學生名單（座號 姓名，每行一位）：</label>
+      <textarea id="inputStudentList"></textarea>
+
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <button class="btn btn-export" style="flex: 1; justify-content: center;" onclick="saveSettings()">儲存更新</button>
+        <button class="btn btn-settings" style="background: #a4b0be; flex: 1; justify-content: center;" onclick="closeSettings()">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ================= Web Audio API 音效生成器 ================= */
+    let audioCtx = null;
+    let isMuted = false;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playTone(freq, type, duration, gainValue = 0.1) {
+      if (isMuted) return;
+      try {
+        initAudio();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(gainValue, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) { console.error(e); }
+    }
+
+    function playStepSound() {
+      playTone(520, 'triangle', 0.08, 0.15);
+    }
+
+    function playDiceSound() {
+      playTone(300 + Math.random() * 200, 'square', 0.05, 0.1);
+    }
+
+    function playWinSound() {
+      if (isMuted) return;
+      const notes = [523.25, 659.25, 783.99, 1046.50];
+      notes.forEach((freq, idx) => {
+        setTimeout(() => playTone(freq, 'sine', 0.25, 0.2), idx * 90);
+      });
+    }
+
+    function toggleAudio() {
+      isMuted = !isMuted;
+      document.getElementById('btnMuteToggle').textContent = isMuted ? '🔇 音效：關' : '🔊 音效：開';
+    }
+
+    /* ================= 預設資料與系統狀態 ================= */
+    const DEFAULT_RAW_LIST = `1 王○晴\n2 王○萱\n3 任○珍\n4 呂○潼\n5 宋○昀\n6 施○瑄\n7 洪○綺\n8 孫○涵\n9 徐○柔\n10 張○妮\n11 許○慈\n12 陳○瑄\n13 陳○彤\n14 黄○雅\n15 傅○綺\n16 曾○晴\n17 曾○彤\n18 温○芮\n19 黃○晴\n20 黃○琳\n21 楊○潔\n22 詹○瑊\n23 潘○辰\n24 鄧○予\n25 鄭○沁\n26 戴○鋡\n27 鍾○霓\n28 王○騰\n29 林○緯\n30 范○丞\n31 莊○瀚\n32 陳○元\n33 黃○豪\n34 詹○嘉\n35 劉○佳`;
+
+    const CORNER_SPECIALS = [
+      { name: "起點站 🚀", type: "corner", desc: "全員活力滿滿！全班齊聲喊讚，被抽中者愛心 +2！", bonus: 2, icon: "🚩" },
+      { name: "命運之輪 🎡", type: "corner", desc: "命運眷顧！上台分享一句心靈雞湯，直接獲得愛心 +2！", bonus: 2, icon: "🎡" },
+      { name: "休息福利站 ☕", type: "corner", desc: "喝杯水放鬆一下！獲得免死金牌一次或愛心 +1！", bonus: 1, icon: "☕" },
+      { name: "機會寶箱 🎁", type: "corner", desc: "幸運大爆發！可指定一位同學共同獲得愛心 +1！", bonus: 1, icon: "🎁" }
+    ];
+
+    const RANDOM_EVENTS = [
+      { name: "機會：幫老師跑腿", desc: "熱心助人！協助發作業，獲得愛心 +1 ❤️", bonus: 1, icon: "🌟" },
+      { name: "命運：大聲朗讀", desc: "口條清晰！流暢朗讀課文一段，獲得愛心 +1 ❤️", bonus: 1, icon: "📜" },
+      { name: "機會：才藝展示", desc: "幽默大師！講一個冷笑話逗樂全班，獲得愛心 +2 ❤️", bonus: 2, icon: "🎭" },
+      { name: "命運：整潔模範", desc: "維持座位整潔無垃圾，獲得愛心 +1 ❤️", bonus: 1, icon: "🧹" }
+    ];
+
+    let currentClassName = "102班";
+    let isMasked = true;
+    let students = []; // { id, name, score }
+    let boardCells = []; // 40 格完整配置 (4角落 + 36格)
+    let currentPos = 0;
+    let isRolling = false;
+    let activeResultStudent = null;
+
+    /* ================= 棋盤路徑建構 (11x11 四周共 40 格) ================= */
+    // 0: (1,1) -> 1~9: 上邊 (1,2..10) -> 10: (1,11) -> 11~19: 右邊 (2..10,11)
+    // 20: (11,11) -> 21~29: 下邊 (11,10..2) -> 30: (11,1) -> 31~39: 左邊 (10..2,1)
+    function getGridPosition(index) {
+      if (index === 0) return { r: 1, c: 1 };
+      if (index > 0 && index < 10) return { r: 1, c: 1 + index };
+      if (index === 10) return { r: 1, c: 11 };
+      if (index > 10 && index < 20) return { r: 1 + (index - 10), c: 11 };
+      if (index === 20) return { r: 11, c: 11 };
+      if (index > 20 && index < 30) return { r: 11, c: 11 - (index - 20) };
+      if (index === 30) return { r: 11, c: 1 };
+      if (index > 30 && index < 40) return { r: 11 - (index - 30), c: 1 };
+      return { r: 1, c: 1 };
+    }
+
+    function parseStudentList(rawText) {
+      const lines = rawText.trim().split('\n');
+      const list = [];
+      lines.forEach((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        const match = trimmed.match(/^(\d+)?\s*(.+)$/);
+        if (match) {
+          const id = match[1] ? match[1] : (idx + 1);
+          const name = match[2];
+          list.push({ id: id, name: name, score: 0 });
+        }
+      });
+      return list;
+    }
+
+    function applyPrivacyMask(name) {
+      if (!isMasked || name.length <= 1) return name;
+      if (name.includes("○")) return name; // 已經有遮罩
+      if (name.length === 2) return name[0] + "○";
+      return name[0] + "○" + name.slice(2);
+    }
+
+    function buildBoardData() {
+      boardCells = new Array(40);
+      
+      // 放置四個角落
+      boardCells[0] = { ...CORNER_SPECIALS[0], isCorner: true };
+      boardCells[10] = { ...CORNER_SPECIALS[1], isCorner: true };
+      boardCells[20] = { ...CORNER_SPECIALS[2], isCorner: true };
+      boardCells[30] = { ...CORNER_SPECIALS[3], isCorner: true };
+
+      // 填入 36 個位置 (排除 0, 10, 20, 30)
+      const validIndices = [];
+      for (let i = 0; i < 40; i++) {
+        if (i % 10 !== 0) validIndices.push(i);
+      }
+
+      let studentIdx = 0;
+      validIndices.forEach((pos, i) => {
+        if (studentIdx < students.length) {
+          boardCells[pos] = {
+            type: "student",
+            student: students[studentIdx]
+          };
+          studentIdx++;
+        } else {
+          // 不足 36 人以「機會」或「命運」補滿
+          const isChance = (i % 2 === 0);
+          const eventTemplate = RANDOM_EVENTS[i % RANDOM_EVENTS.length];
+          boardCells[pos] = {
+            type: isChance ? "chance" : "destiny",
+            name: isChance ? `機會：${eventTemplate.name}` : `命運：${eventTemplate.name}`,
+            desc: eventTemplate.desc,
+            bonus: eventTemplate.bonus,
+            icon: eventTemplate.icon
+          };
+        }
+      });
+    }
+
+    function renderBoardUI() {
+      // 保留中央主體，清除四周格子
+      const board = document.getElementById('board');
+      const cells = board.querySelectorAll('.cell');
+      cells.forEach(c => c.remove());
+
+      boardCells.forEach((cellData, index) => {
+        const pos = getGridPosition(index);
+        const cellEl = document.createElement('div');
+        cellEl.className = 'cell';
+        cellEl.style.gridRow = pos.r;
+        cellEl.style.gridColumn = pos.c;
+        cellEl.id = `cell-${index}`;
+
+        if (cellData.isCorner) {
+          cellEl.classList.add('corner');
+          cellEl.innerHTML = `
+            <span style="font-size: 20px;">${cellData.icon}</span>
+            <div class="cell-name">${cellData.name}</div>
+            <div style="font-size: 11px; color: #57606f;">+${cellData.bonus} ❤️</div>
+          `;
+        } else if (cellData.type === 'student') {
+          const s = cellData.student;
+          cellEl.innerHTML = `
+            <div class="cell-id">#${s.id}</div>
+            <div class="cell-name">${applyPrivacyMask(s.name)}</div>
+            <div class="cell-score" id="score-tag-${s.id}">❤️ <span>${s.score}</span></div>
+          `;
+        } else {
+          cellEl.classList.add(cellData.type === 'chance' ? 'special-chance' : 'special-destiny');
+          cellEl.innerHTML = `
+            <span style="font-size: 18px;">${cellData.icon}</span>
+            <div class="cell-name" style="font-size: 13px;">${cellData.name}</div>
+            <div style="font-size: 11px; color: #ff6b81;">+${cellData.bonus} ❤️</div>
+          `;
+        }
+        board.appendChild(cellEl);
+      });
+
+      highlightCell(currentPos);
+    }
+
+    function highlightCell(index) {
+      document.querySelectorAll('.cell').forEach(c => c.classList.remove('active'));
+      const activeCell = document.getElementById(`cell-${index}`);
+      if (activeCell) activeCell.classList.add('active');
+    }
+
+    /* ================= 擲骰與平滑走格動畫 ================= */
+    function startRoll() {
+      if (isRolling) return;
+      initAudio();
+      isRolling = true;
+      document.getElementById('btnRoll').disabled = true;
+
+      const diceEl = document.getElementById('diceElement');
+      diceEl.classList.add('rolling');
+
+      let rollCount = 0;
+      const diceInterval = setInterval(() => {
+        diceEl.textContent = Math.floor(Math.random() * 6) + 1;
+        playDiceSound();
+        rollCount++;
+        if (rollCount > 12) {
+          clearInterval(diceInterval);
+          diceEl.classList.remove('rolling');
+          
+          // 隨機產生 1 ~ 6 步 (亦可搭配大步數抽籤)
+          const steps = Math.floor(Math.random() * 6) + 1;
+          diceEl.textContent = steps;
+          document.getElementById('statusBanner').textContent = `擲出了 ${steps} 點！前進中...`;
+          
+          movePlayer(steps);
+        }
+      }, 70);
+    }
+
+    function movePlayer(remainingSteps) {
+      if (remainingSteps <= 0) {
+        isRolling = false;
+        document.getElementById('btnRoll').disabled = false;
+        handleLandOnCell(currentPos);
+        return;
+      }
+
+      currentPos = (currentPos + 1) % 40;
+      highlightCell(currentPos);
+      playStepSound();
+
+      // 帶有物理遞減感的走格節奏
+      setTimeout(() => {
+        movePlayer(remainingSteps - 1);
+      }, 160);
+    }
+
+    /* ================= 到達格子處理與彈窗互動 ================= */
+    function handleLandOnCell(pos) {
+      const cellData = boardCells[pos];
+      playWinSound();
+
+      const modal = document.getElementById('resultModal');
+      const modalIcon = document.getElementById('modalEventIcon');
+      const modalSubtitle = document.getElementById('modalSubtitle');
+      const modalName = document.getElementById('modalStudentName');
+      const modalScore = document.getElementById('modalStudentScore');
+      const modalScoreBtns = document.getElementById('modalScoreBtns');
+      const modalDesc = document.getElementById('modalSpecialDescription');
+
+      if (cellData.type === 'student') {
+        activeResultStudent = cellData.student;
+        modalIcon.textContent = "🎯";
+        modalSubtitle.textContent = `幸運之星 (座號 #${activeResultStudent.id})`;
+        modalName.textContent = applyPrivacyMask(activeResultStudent.name);
+        modalScore.textContent = `目前得分：❤️ ${activeResultStudent.score}`;
+        modalScoreBtns.style.display = "flex";
+        modalDesc.style.display = "none";
+        document.getElementById('statusBanner').textContent = `🎉 抽中了 ${activeResultStudent.id} 號 ${applyPrivacyMask(activeResultStudent.name)}！`;
+      } else {
+        // 角落或特殊機會命運
+        activeResultStudent = null;
+        modalIcon.textContent = cellData.icon;
+        modalSubtitle.textContent = cellData.isCorner ? "🌟 踩中角落特殊格！" : "✨ 觸發特殊事件！";
+        modalName.textContent = cellData.name;
+        modalScore.textContent = `獎勵分數：+${cellData.bonus} ❤️`;
+        modalScoreBtns.style.display = "none";
+        modalDesc.style.display = "block";
+        modalDesc.textContent = cellData.desc;
+        document.getElementById('statusBanner').textContent = `✨ 觸發了：${cellData.name}`;
+      }
+
+      modal.style.display = "flex";
+    }
+
+    function modifyActiveScore(delta) {
+      if (!activeResultStudent) return;
+      activeResultStudent.score = Math.max(0, activeResultStudent.score + delta);
+      document.getElementById('modalStudentScore').textContent = `目前得分：❤️ ${activeResultStudent.score}`;
+      
+      // 即時更新棋盤上標籤
+      const tag = document.querySelector(`#score-tag-${activeResultStudent.id} span`);
+      if (tag) tag.textContent = activeResultStudent.score;
+      playTone(delta > 0 ? 800 : 250, 'sine', 0.15, 0.2);
+    }
+
+    function closeModal() {
+      document.getElementById('resultModal').style.display = 'none';
+    }
+
+    /* ================= 設定與名單匯入 ================= */
+    function openSettings() {
+      document.getElementById('inputClassName').value = currentClassName;
+      document.getElementById('checkMask').checked = isMasked;
+      
+      const rawText = students.map(s => `${s.id} ${s.name}`).join('\n');
+      document.getElementById('inputStudentList').value = rawText;
+      document.getElementById('settingsModal').style.display = 'flex';
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsModal').style.display = 'none';
+    }
+
+    function saveSettings() {
+      currentClassName = document.getElementById('inputClassName').value.trim() || "幸運班級";
+      isMasked = document.getElementById('checkMask').checked;
+      document.getElementById('displayClassName').textContent = currentClassName;
+
+      const rawText = document.getElementById('inputStudentList').value;
+      const parsed = parseStudentList(rawText);
+      if (parsed.length > 0) {
+        // 保留原有分數（若座號或姓名相同）
+        parsed.forEach(newS => {
+          const old = students.find(s => s.id == newS.id || s.name == newS.name);
+          if (old) newS.score = old.score;
+        });
+        students = parsed;
+      }
+
+      buildBoardData();
+      renderBoardUI();
+      closeSettings();
+    }
+
+    /* ================= 下載名單與分數 (TXT) ================= */
+    function exportScores() {
+      let content = `===============================\n`;
+      content += `  ${currentClassName} - 大富翁抽籤成績清單\n`;
+      content += `  匯出日期：${new Date().toLocaleString()}\n`;
+      content += `===============================\n\n`;
+      content += `座號\t姓名\t\t累計分數\n`;
+      content += `-------------------------------\n`;
+
+      students.forEach(s => {
+        content += `${s.id}\t${s.name}\t\t❤️ ${s.score}\n`;
+      });
+
+      content += `\n===============================\n`;
+
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${currentClassName}_學生得分紀錄_${new Date().toISOString().slice(0,10)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    /* ================= 初始化執行 ================= */
+    window.addEventListener('DOMContentLoaded', () => {
+      students = parseStudentList(DEFAULT_RAW_LIST);
+      buildBoardData();
+      renderBoardUI();
+    });
+  </script>
+</body>
+</html>
